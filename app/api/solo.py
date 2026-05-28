@@ -16,6 +16,7 @@ from app.ai.solo_game import solo_manager
 from app.ai.photo_composer import compose_from_game
 from app.models.db import db
 from app.models.record import SoloRecord
+from app.models.user import User
 
 solo_bp = Blueprint("solo", __name__, url_prefix="/api/solo")
 
@@ -33,12 +34,18 @@ def _expr_info(name: str) -> dict:
 @solo_bp.post("/start")
 def start_game():
     data = request.get_json(force=True)
-    user_id = data.get("user_id")
-    if not user_id:
-        return jsonify({"error": "user_id가 필요합니다."}), 400
+    user_name = (data.get("user_name") or "").strip()
+    if not user_name:
+        return jsonify({"error": "user_name이 필요합니다."}), 400
+
+    user = User.query.filter_by(username=user_name).first()
+    if user is None:
+        user = User(username=user_name)
+        db.session.add(user)
+        db.session.commit()
 
     game_id = str(uuid.uuid4())
-    state = solo_manager.create_game(game_id, user_id)
+    state = solo_manager.create_game(game_id, user.id)
     return jsonify({
         "game_id": game_id,
         "expressions": [_expr_info(e) for e in state.expressions],
