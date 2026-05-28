@@ -1,0 +1,6 @@
+{
+  "label": "놀라기",
+  "emoji": "😲",
+  "keys": ["jawOpen", "browOuterUpLeft", "browOuterUpRight"],
+  "suppress": null
+}

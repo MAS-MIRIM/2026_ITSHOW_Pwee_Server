@@ -1,0 +1,6 @@
+{
+  "label": "왼쪽 윙크",
+  "emoji": "😉",
+  "keys": ["eyeBlinkLeft"],
+  "suppress": "eyeBlinkRight"
+}

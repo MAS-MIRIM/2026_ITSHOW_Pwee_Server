@@ -1,0 +1,38 @@
+{
+  "_comment": "게임 판정 설정 파일. 서버 재시작 없이 수정 가능 (reload API 호출 시 반영).",
+
+  "detection": {
+    "_comment": "표정 인식 판정 기준",
+    "match_threshold": 0.60,
+    "fail_shot_threshold": 0.30,
+    "amplify": 1.5,
+    "cooldown_sec": 1.0
+  },
+
+  "solo": {
+    "_comment": "솔로 모드 설정",
+    "expression_count": 10,
+    "round_time_limit_sec": 15.0
+  },
+
+  "multi": {
+    "_comment": "멀티 모드 설정",
+    "win_streak_for_penalty": 3,
+    "max_score_to_win": 10,
+    "max_rounds": 20
+  },
+
+  "expression_weights": {
+    "_comment": "표정별 개별 threshold 오버라이드. 없으면 detection.match_threshold 사용.",
+    "angry":       { "threshold": 0.55, "amplify": 3.0 },
+    "sad":         { "threshold": 0.60, "amplify": 1.8 },
+    "kiss":        { "threshold": 0.60, "amplify": 1.8 },
+    "squint":      { "threshold": 0.60, "amplify": 1.8 },
+    "wink_left":   { "threshold": 0.65, "amplify": 1.5 },
+    "wink_right":  { "threshold": 0.65, "amplify": 1.5 },
+    "happy":       { "threshold": 0.70, "amplify": 1.5 },
+    "surprised":   { "threshold": 0.70, "amplify": 1.5 },
+    "mouth_open":  { "threshold": 0.70, "amplify": 1.5 },
+    "eyebrows_up": { "threshold": 0.65, "amplify": 1.6 }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "label": "눈썹 올리기",
+  "emoji": "🙆",
+  "keys": ["browInnerUp", "browOuterUpLeft", "browOuterUpRight"],
+  "suppress": null
+}

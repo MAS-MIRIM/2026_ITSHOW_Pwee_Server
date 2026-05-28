@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.env
+.env.example
+venv/
+.venv/
+app/api/admin.py
+app/ai/models/*.task
+app/ai/assets/frame.png
+instance/
+migrations/

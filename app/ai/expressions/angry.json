@@ -1,0 +1,6 @@
+{
+  "label": "화내기",
+  "emoji": "😡",
+  "keys": ["browDownLeft", "browDownRight", "noseSneerLeft", "noseSneerRight"],
+  "suppress": null
+}

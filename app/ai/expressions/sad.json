@@ -1,0 +1,6 @@
+{
+  "label": "슬퍼하기",
+  "emoji": "😢",
+  "keys": ["mouthFrownLeft", "mouthFrownRight"],
+  "suppress": null
+}
