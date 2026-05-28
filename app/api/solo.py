@@ -40,12 +40,23 @@ def start_game():
 
     user = User.query.filter_by(username=user_name).first()
     if user is None:
-        user = User(username=user_name)
-        db.session.add(user)
-        db.session.commit()
+        try:
+            user = User(username=user_name)
+            db.session.add(user)
+            db.session.flush()   # id 확정, 객체 expire 없음
+            user_id = user.id
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            user = User.query.filter_by(username=user_name).first()
+            if user is None:
+                return jsonify({"error": "사용자 생성에 실패했습니다."}), 500
+            user_id = user.id
+    else:
+        user_id = user.id
 
     game_id = str(uuid.uuid4())
-    state = solo_manager.create_game(game_id, user.id)
+    state = solo_manager.create_game(game_id, user_id)
     return jsonify({
         "game_id": game_id,
         "expressions": [_expr_info(e) for e in state.expressions],
