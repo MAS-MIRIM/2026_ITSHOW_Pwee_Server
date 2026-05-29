@@ -9,6 +9,15 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_DATABASE_URI = "sqlite:///pwee.db"
 
+    # Flask-Mail
+    MAIL_SERVER   = os.getenv("MAILER_HOST", "smtp.gmail.com")
+    MAIL_PORT     = int(os.getenv("MAILER_PORT", 587))
+    MAIL_USE_TLS  = os.getenv("MAILER_TLS", "true").lower() == "true"
+    MAIL_USE_SSL  = os.getenv("MAILER_SSL", "false").lower() == "true"
+    MAIL_USERNAME = os.getenv("MAILER_USER", "")
+    MAIL_PASSWORD = os.getenv("MAILER_PASS", "")
+    MAIL_DEFAULT_SENDER = os.getenv("MAILER_FROM", os.getenv("MAILER_USER", ""))
+
 
 class DevelopmentConfig(Config):
     DEBUG = True

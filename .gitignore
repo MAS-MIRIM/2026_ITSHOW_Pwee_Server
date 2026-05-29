@@ -9,3 +9,4 @@ app/ai/models/*.task
 app/ai/assets/frame.png
 instance/
 migrations/
+static/images/photo

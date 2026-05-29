@@ -1,122 +1,128 @@
-from flask import Flask, render_template, request, send_file
-from dotenv import load_dotenv
+"""
+사진 공유 API
+
+POST /api/share/upload      이미지 저장 + QR 코드 생성
+GET  /api/share/download/<id>  이미지 다운로드
+POST /api/share/email       이메일 전송
+"""
+import base64
+import io
 import os
-from flask_mail import Mail, Message
+import uuid
+
 import qrcode
-import re
+from flask import Blueprint, current_app, jsonify, request, send_file
+from PIL import Image
 
-def qrcode_make(user_name):
-    # photo 폴더 내 이미지 확인
-    image_path = os.path.join(
-        os.getcwd(),
-        "static", "images", "photo",
-        f"{user_name}.png"
-    )
-    # 파일 없으면 종료
-    if not os.path.exists(image_path):
-        return None
-    # QR 파일명
-    file_name = f"{user_name}_qrcode.png"
-    # QR 저장 폴더
-    save_dir = os.path.join(
-        os.getcwd(),
-        "static", "images", "qrcode"
-    )
+share_bp = Blueprint("share", __name__, url_prefix="/api/share")
 
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
-
-    save_path = os.path.join(save_dir, file_name)
-
-    # QR에 들어갈 URL **URL은 서버 주소로 변경!**
-    qr_data = f"http://192.168.0.10:5000/download/{user_name}"
-    # QR 생성
-    img = qrcode.make(qr_data)
-    # 저장
-    img.save(save_path)
-    return file_name
-
-app = Flask(__name__)
-load_dotenv()
-
-app.config['MAIL_SERVER'] = os.getenv('MAILER_HOST')
-app.config['MAIL_PORT'] = int(os.getenv('MAILER_PORT', 465))
-app.config['MAIL_USERNAME'] = os.getenv('MAILER_USER')
-app.config['MAIL_PASSWORD'] = os.getenv('MAILER_PASS')
-app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAILER_FROM')
-
-app.config['MAIL_USE_TLS'] = False
-app.config['MAIL_USE_SSL'] = True
-
-app.config['MAIL_DEBUG'] = True
-
-mail = Mail(app)
+PHOTO_DIR = os.path.join("static", "images", "photo")
+QR_DIR    = os.path.join("static", "images", "qrcode")
 
 
-@app.route('/')
-def hello_world():
-    return "hello world!"
-
-@app.route('/forms')
-def email_form():
-    return render_template('test_email.html')
-
-@app.route('/generate/<username>')
-def generate_qr(username):
-    qr_file = qrcode_make(username)
-
-    if qr_file is None:
-        return "이미지가 존재하지 않습니다."
-
-    return render_template('index.html', qr_image=qr_file)
-
-@app.route('/download/<username>')
-def download(username):
-    image_path = f"static/images/photo/{username}.png"
-    return send_file(image_path, mimetype='image/png')
+def _ensure_dirs():
+    os.makedirs(PHOTO_DIR, exist_ok=True)
+    os.makedirs(QR_DIR, exist_ok=True)
 
 
-@app.route('/share/<photo>')
-def instargram_share(photo):
-    return {"image_url": f"https://your-server.com/static/images/photo/{photo}"}
+def _decode_b64(b64: str) -> bytes:
+    if "," in b64:
+        b64 = b64.split(",", 1)[1]
+    return base64.b64decode(b64)
 
 
-@app.route('/send', methods=['POST'])
-def send_email():
-    email = request.form.get('email')
+@share_bp.post("/upload")
+def upload():
+    """
+    JSON body: { image_base64, user_name? }
+    Returns: { image_id, qr_b64, download_url }
+    """
+    data = request.get_json(force=True)
+    b64 = data.get("image_base64", "")
+    if not b64:
+        return jsonify({"error": "image_base64가 필요합니다."}), 400
 
-    if not email:
-        return {"message": "이메일 주소가 필요합니다."}, 400
+    _ensure_dirs()
 
-    pattern = r'^[\w\.-]+@[\w\.-]+\.\w+$'
-
-    if not re.match(pattern, email):
-        return {"message": "이메일 형식 아님"}, 400
-
-    image_path = '../../../static/images/photo/photo_test.png'
-
-    print(os.path.exists(image_path))
-
-    msg = Message(
-        subject='사진 공유',
-        sender=app.config['MAIL_USERNAME'],
-        recipients=[email]
-    )
-
-    msg.body = '촬영한 사진입니다.'
+    image_id   = uuid.uuid4().hex[:10]
+    image_path = os.path.join(PHOTO_DIR, f"{image_id}.png")
 
     try:
-        with app.open_resource(image_path) as fp:
-            msg.attach(
-                filename='photo_test.png',
-                content_type='image/png',
-                data=fp.read()
-            )
+        img = Image.open(io.BytesIO(_decode_b64(b64)))
+        img.save(image_path)
+    except Exception:
+        return jsonify({"error": "이미지 저장에 실패했습니다."}), 500
 
+    server_url   = os.getenv("SERVER_URL", "http://localhost:5001")
+    download_url = f"{server_url}/api/share/download/{image_id}"
+
+    qr = qrcode.QRCode(box_size=6, border=2)
+    qr.add_data(download_url)
+    qr.make(fit=True)
+    qr_img = qr.make_image(fill_color="black", back_color="white")
+
+    qr_buf = io.BytesIO()
+    qr_img.save(qr_buf, format="PNG")
+    qr_b64 = base64.b64encode(qr_buf.getvalue()).decode()
+
+    return jsonify({
+        "image_id":    image_id,
+        "qr_b64":      qr_b64,
+        "download_url": download_url,
+    })
+
+
+@share_bp.get("/download/<image_id>")
+def download(image_id: str):
+    image_path = os.path.join(PHOTO_DIR, f"{image_id}.png")
+    if not os.path.isfile(image_path):
+        return jsonify({"error": "이미지를 찾을 수 없습니다."}), 404
+    return send_file(os.path.abspath(image_path), mimetype="image/png")
+
+
+@share_bp.post("/email")
+def send_email():
+    """
+    JSON body: { email, image_base64?, image_id? }
+    image_base64 우선, 없으면 image_id로 파일 로드.
+    """
+    from flask_mail import Mail, Message
+
+    data  = request.get_json(force=True)
+    email = (data.get("email") or "").strip()
+    if not email or "@" not in email:
+        return jsonify({"error": "올바른 이메일 주소가 필요합니다."}), 400
+
+    # 이미지 바이트 획득
+    img_bytes = None
+    b64 = data.get("image_base64", "")
+    if b64:
+        try:
+            img_bytes = _decode_b64(b64)
+        except Exception:
+            return jsonify({"error": "이미지 디코딩에 실패했습니다."}), 400
+    else:
+        image_id = data.get("image_id", "")
+        if image_id:
+            path = os.path.join(PHOTO_DIR, f"{image_id}.png")
+            if os.path.isfile(path):
+                with open(path, "rb") as f:
+                    img_bytes = f.read()
+
+    if not img_bytes:
+        return jsonify({"error": "전송할 이미지가 없습니다."}), 400
+
+    mail = Mail(current_app)
+    msg  = Message(
+        subject="Pwee — 촬영 사진",
+        recipients=[email],
+        body="Pwee에서 찍은 사진을 공유해 드립니다 :)",
+    )
+    msg.attach("pwee-photo.png", "image/png", img_bytes)
+
+    try:
         mail.send(msg)
-
-        return {"message": "메일 전송 완료"}
-
     except Exception as e:
-        print(e)
-        return {"message": f"전송 실패: {str(e)}"}, 500
+        return jsonify({"error": f"메일 전송 실패: {e}"}), 500
+
+    return jsonify({"message": "메일이 전송되었습니다."})

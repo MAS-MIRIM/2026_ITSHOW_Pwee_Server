@@ -159,4 +159,5 @@ def finish_game():
         "clear_time_ms": summary["clear_time_ms"],
         "life_four_cut": life_four_cut_b64,
         "fail_shot_count": len(fail_shots),
+        "fail_shots": fail_shots[:4],
     })

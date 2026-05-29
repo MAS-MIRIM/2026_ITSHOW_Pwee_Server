@@ -18,11 +18,13 @@ def create_app() -> Flask:
     from app.api.solo import solo_bp
     from app.api.leaderboard import leaderboard_bp
     from app.api.admin import admin_bp
+    from app.share.share import share_bp
 
     app.register_blueprint(analyze_bp)
     app.register_blueprint(solo_bp)
     app.register_blueprint(leaderboard_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(share_bp)
 
     @app.errorhandler(400)
     def bad_request(e):
