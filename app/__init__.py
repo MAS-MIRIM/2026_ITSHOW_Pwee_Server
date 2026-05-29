@@ -1,8 +1,11 @@
 from flask import Flask
 from flask_cors import CORS
+from flask_mail import Mail
 
 from config import get_config
 from app.models.db import init_db
+
+mail = Mail()
 
 
 def create_app() -> Flask:
@@ -13,6 +16,7 @@ def create_app() -> Flask:
     CORS(app, resources={r"/api/*": {"origins": "*"}})
 
     init_db(app)
+    mail.init_app(app)
 
     from app.api.analyze import analyze_bp
     from app.api.solo import solo_bp

@@ -86,7 +86,8 @@ def send_email():
     JSON body: { email, image_base64?, image_id? }
     image_base64 우선, 없으면 image_id로 파일 로드.
     """
-    from flask_mail import Mail, Message
+    from flask_mail import Message
+    from app import mail
 
     data  = request.get_json(force=True)
     email = (data.get("email") or "").strip()
@@ -112,9 +113,10 @@ def send_email():
     if not img_bytes:
         return jsonify({"error": "전송할 이미지가 없습니다."}), 400
 
-    mail = Mail(current_app)
+    sender = current_app.config.get("MAIL_DEFAULT_SENDER") or current_app.config.get("MAIL_USERNAME")
     msg  = Message(
         subject="Pwee — 촬영 사진",
+        sender=sender,
         recipients=[email],
         body="Pwee에서 찍은 사진을 공유해 드립니다 :)",
     )
