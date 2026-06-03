@@ -124,6 +124,11 @@ def upload_video():
 
 @share_bp.get("/video/<game_id>")
 def stream_video(game_id: str):
+    """
+    ?download=1  →  파일 다운로드 (Content-Disposition: attachment)
+    기본값       →  인라인 스트리밍
+    """
+    as_download = request.args.get("download", "").lower() in ("1", "true", "yes")
     for ext in ("webm", "mp4"):
         path = os.path.join(VIDEO_DIR, f"{game_id}.{ext}")
         if os.path.isfile(path):
@@ -131,7 +136,8 @@ def stream_video(game_id: str):
             return send_file(
                 os.path.abspath(path),
                 mimetype=mimetype,
-                as_attachment=False,
+                as_attachment=as_download,
+                download_name=f"pwee-{game_id}.{ext}" if as_download else None,
             )
     return jsonify({"error": "영상을 찾을 수 없습니다."}), 404
 

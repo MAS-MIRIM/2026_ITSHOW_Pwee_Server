@@ -33,6 +33,29 @@ def _expr_info(name: str) -> dict:
     }
 
 
+@solo_bp.post("/user")
+def get_or_create_user():
+    """user_name으로 유저를 조회하거나 생성한다. { user_name } → { user_id, username }"""
+    data = request.get_json(force=True)
+    user_name = (data.get("user_name") or "").strip()
+    if not user_name:
+        return jsonify({"error": "user_name이 필요합니다."}), 400
+
+    user = User.query.filter_by(username=user_name).first()
+    if user is None:
+        user = User(username=user_name)
+        db.session.add(user)
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            user = User.query.filter_by(username=user_name).first()
+            if user is None:
+                return jsonify({"error": "사용자 생성에 실패했습니다."}), 500
+
+    return jsonify({"user_id": user.id, "username": user.username})
+
+
 @solo_bp.post("/start")
 def start_game():
     data = request.get_json(force=True)
@@ -166,6 +189,7 @@ def finish_game():
         "record_id": record.id,
         "clear_time_ms": summary["clear_time_ms"],
         "life_four_cut": life_four_cut_b64,
+        "fail_shots": fail_shots[:4],
         "fail_shot_count": len(fail_shots),
         "fail_photo_urls": fail_photo_urls,
     })

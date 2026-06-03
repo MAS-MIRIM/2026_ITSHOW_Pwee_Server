@@ -14,11 +14,11 @@ from app.ai.expression_analyzer import EXPRESSIONS, ExpressionAnalyzer
 from app.ai.settings_loader import get, get_expression
 
 PENALTIES = [
-    "close_one_eye",        # 한쪽 눈 감기
-    "stick_out_tongue",     # 혀 내밀기 (판정: mouthOpen + jawOpen)
-    "raised_eyebrows",      # 눈썹 올리기
-    "puffed_cheeks",        # 볼 부풀리기
-    "nose_wrinkle",         # 코 찡그리기
+    "wink_left",     # 왼쪽 윙크
+    "wink_right",    # 오른쪽 윙크
+    "eyebrows_up",   # 눈썹 올리기
+    "kiss",          # 뽀뽀
+    "squint",        # 눈 찡긋
 ]
 
 
@@ -35,6 +35,7 @@ class PlayerState:
     score: int = 0
     streak: int = 0
     penalty: Optional[str] = None
+    penalty_used: bool = False   # 게임당 패널티는 1회만
     round_start_at: Optional[float] = None
     last_match_at: float = 0.0  # 쿨다운용
 
@@ -200,10 +201,11 @@ class MultiGameManager:
             payload["round_won"] = True
             payload["winner_elapsed_ms"] = elapsed
 
-            # 연속 승리 패널티 체크
-            if player.streak >= get("multi", "win_streak_for_penalty", 3):
+            # 연속 승리 패널티 체크 — 게임당 1회만
+            if player.streak >= get("multi", "win_streak_for_penalty", 3) and not player.penalty_used:
                 penalty = random.choice(PENALTIES)
                 player.penalty = penalty
+                player.penalty_used = True
                 player.streak = 0
                 payload["penalty_assigned"] = {"user_id": user_id, "penalty": penalty}
 
