@@ -10,6 +10,8 @@ class User(db.Model):
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     solo_records = db.relationship("SoloRecord", back_populates="user", lazy="dynamic")
+    multi_records_as_a = db.relationship("MultiRecord", foreign_keys="MultiRecord.player_a_id", lazy="dynamic")
+    multi_records_as_b = db.relationship("MultiRecord", foreign_keys="MultiRecord.player_b_id", lazy="dynamic")
 
     def to_dict(self):
         return {"id": self.id, "username": self.username}

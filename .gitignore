@@ -9,4 +9,6 @@ app/ai/models/*.task
 app/ai/assets/frame.png
 instance/
 migrations/
-static/images/photo
+static/
+test_composer.py
+test_output*.jpg

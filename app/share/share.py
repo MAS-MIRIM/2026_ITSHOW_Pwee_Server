@@ -1,9 +1,11 @@
 """
-사진 공유 API
+사진/영상 공유 API
 
-POST /api/share/upload      이미지 저장 + QR 코드 생성
-GET  /api/share/download/<id>  이미지 다운로드
-POST /api/share/email       이메일 전송
+POST /api/share/upload              이미지 저장 + QR 코드 생성
+GET  /api/share/download/<id>       이미지 다운로드
+POST /api/share/upload-video        영상(webm/mp4) 저장
+GET  /api/share/video/<game_id>     영상 스트리밍/다운로드
+POST /api/share/email               이메일 전송
 """
 import base64
 import io
@@ -18,11 +20,13 @@ share_bp = Blueprint("share", __name__, url_prefix="/api/share")
 
 PHOTO_DIR = os.path.join("static", "images", "photo")
 QR_DIR    = os.path.join("static", "images", "qrcode")
+VIDEO_DIR = os.path.join("static", "videos")
 
 
 def _ensure_dirs():
     os.makedirs(PHOTO_DIR, exist_ok=True)
     os.makedirs(QR_DIR, exist_ok=True)
+    os.makedirs(VIDEO_DIR, exist_ok=True)
 
 
 def _decode_b64(b64: str) -> bytes:
@@ -78,6 +82,58 @@ def download(image_id: str):
     if not os.path.isfile(image_path):
         return jsonify({"error": "이미지를 찾을 수 없습니다."}), 404
     return send_file(os.path.abspath(image_path), mimetype="image/png")
+
+
+@share_bp.post("/upload-video")
+def upload_video():
+    """
+    multipart/form-data: file(webm/mp4) + game_id
+    Returns: { game_id, video_url }
+    """
+    _ensure_dirs()
+
+    game_id = request.form.get("game_id", "").strip()
+    if not game_id:
+        return jsonify({"error": "game_id가 필요합니다."}), 400
+
+    video_file = request.files.get("file")
+    if not video_file:
+        return jsonify({"error": "file이 필요합니다."}), 400
+
+    ext = "webm"
+    original_filename = video_file.filename or ""
+    if original_filename.lower().endswith(".mp4"):
+        ext = "mp4"
+
+    filename = f"{game_id}.{ext}"
+    save_path = os.path.join(VIDEO_DIR, filename)
+
+    try:
+        video_file.save(save_path)
+    except Exception:
+        return jsonify({"error": "영상 저장에 실패했습니다."}), 500
+
+    server_url = os.getenv("SERVER_URL", "http://localhost:5001")
+    video_url  = f"{server_url}/api/share/video/{game_id}"
+
+    return jsonify({
+        "game_id":   game_id,
+        "video_url": video_url,
+    })
+
+
+@share_bp.get("/video/<game_id>")
+def stream_video(game_id: str):
+    for ext in ("webm", "mp4"):
+        path = os.path.join(VIDEO_DIR, f"{game_id}.{ext}")
+        if os.path.isfile(path):
+            mimetype = "video/webm" if ext == "webm" else "video/mp4"
+            return send_file(
+                os.path.abspath(path),
+                mimetype=mimetype,
+                as_attachment=False,
+            )
+    return jsonify({"error": "영상을 찾을 수 없습니다."}), 404
 
 
 @share_bp.post("/email")

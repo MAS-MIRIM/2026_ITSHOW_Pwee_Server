@@ -4,12 +4,13 @@ from flask_mail import Mail
 
 from config import get_config
 from app.models.db import init_db
+from app.api.multi_socket import init_socketio
 
 mail = Mail()
 
 
 def create_app() -> Flask:
-    app = Flask(__name__)
+    app = Flask(__name__, static_folder="../static")
 
     app.config.from_object(get_config())
 
@@ -29,6 +30,8 @@ def create_app() -> Flask:
     app.register_blueprint(leaderboard_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(share_bp)
+
+    init_socketio(app)
 
     @app.errorhandler(400)
     def bad_request(e):

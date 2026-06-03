@@ -30,7 +30,8 @@ class SoloGameState:
     round_results: list[SoloRoundResult] = field(default_factory=list)
     started_at: float = field(default_factory=time.time)
     finished_at: Optional[float] = None
-    fail_shots: dict[int, str] = field(default_factory=dict)  # round_index → base64
+    fail_shots: dict[int, str] = field(default_factory=dict)    # round_index → base64
+    success_shots: dict[int, str] = field(default_factory=dict) # round_index → base64
     last_match_at: float = 0.0  # 직전 성공 시각 — 쿨다운용
     round_started_at: float = field(default_factory=time.time)  # 현재 라운드 시작 시각
 
@@ -95,10 +96,13 @@ class SoloGameManager:
         target = state.current_expression
         detected_expr, target_score = analyzer.match_score(target, image_bytes)
 
+        from app.ai.photo_storage import save_photo
+
         idx = state.current_index
         if 0 < target_score < get("detection", "fail_shot_threshold", 0.30) and idx not in state.fail_shots:
             import base64
             state.fail_shots[idx] = base64.b64encode(image_bytes).decode()
+            save_photo(state.game_id, idx, image_bytes, "fail")
 
         now = time.time()
         round_time_limit = get("solo", "round_time_limit_sec", 15.0)
@@ -154,12 +158,16 @@ class SoloGameManager:
 
         if matched:
             state.last_match_at = now
+            import base64 as _b64
+            state.success_shots[idx] = _b64.b64encode(image_bytes).decode()
+            save_photo(state.game_id, idx, image_bytes, "success")
             _advance_round(achieved=True, score=target_score)
         elif timed_out:
             # 타임아웃 — 망한샷 없으면 현재 프레임으로 저장
             if idx not in state.fail_shots:
                 import base64 as _b64
                 state.fail_shots[idx] = _b64.b64encode(image_bytes).decode()
+                save_photo(state.game_id, idx, image_bytes, "fail")
             _advance_round(achieved=False, score=target_score)
 
         return result_payload
@@ -187,6 +195,15 @@ class SoloGameManager:
             return []
         shots = [state.fail_shots[i] for i in sorted(state.fail_shots)]
         state.fail_shots.clear()
+        return shots
+
+    def pop_success_shots(self, game_id: str) -> list[str]:
+        """성공샷 base64 리스트를 라운드 순서대로 꺼내고 세션에서 제거한다."""
+        state = self._sessions.get(game_id)
+        if state is None:
+            return []
+        shots = [state.success_shots[i] for i in sorted(state.success_shots)]
+        state.success_shots.clear()
         return shots
 
     def cleanup(self, game_id: str):
