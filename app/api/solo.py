@@ -5,6 +5,7 @@ POST /api/solo/start          게임 세션 생성
 POST /api/solo/frame          프레임 분석 및 표정 매칭
 GET  /api/solo/summary/<id>   최종 결과 조회
 POST /api/solo/finish         결과 DB 저장 + 망한샷 반환
+POST /api/solo/four-cut       저장된 실패샷으로 인생네컷 재생성
 """
 import base64
 import uuid
@@ -14,6 +15,7 @@ from flask import Blueprint, jsonify, request
 from app.ai.expression_analyzer import EXPRESSION_META
 from app.ai.solo_game import solo_manager
 from app.ai.photo_composer import compose_from_game
+from app.ai.photo_storage import get_fail_photo_urls
 from app.models.db import db
 from app.models.record import SoloRecord
 from app.models.user import User
@@ -132,6 +134,7 @@ def finish_game():
     if not game_id:
         return jsonify({"error": "game_id가 필요합니다."}), 400
     user_name = data.get("user_name", "")
+    video_url = data.get("video_url") or None   # 클라이언트가 업로드 후 전달
 
     summary = solo_manager.get_summary(game_id)
     if summary is None:
@@ -146,11 +149,16 @@ def finish_game():
     db.session.commit()
 
     fail_shots = solo_manager.pop_fail_shots(game_id)
+    solo_manager.pop_success_shots(game_id)  # 메모리에서 제거 (파일은 이미 저장됨)
+
     life_four_cut_b64 = compose_from_game(
         fail_shots,
         user_name=user_name,
         clear_time_ms=summary["clear_time_ms"],
+        video_url=video_url,
     )
+
+    fail_photo_urls = get_fail_photo_urls(game_id)
 
     solo_manager.cleanup(game_id)
 
@@ -159,5 +167,62 @@ def finish_game():
         "clear_time_ms": summary["clear_time_ms"],
         "life_four_cut": life_four_cut_b64,
         "fail_shot_count": len(fail_shots),
-        "fail_shots": fail_shots[:4],
+        "fail_photo_urls": fail_photo_urls,
+    })
+
+
+@solo_bp.post("/compose")
+def compose_custom():
+    """
+    클라이언트가 직접 b64 사진 배열을 보내 인생네컷을 합성한다.
+    JSON body: { shots: [b64, ...], user_name?, video_url? }
+    Returns: { life_four_cut: base64 }
+    """
+    data = request.get_json(force=True)
+    shots     = data.get("shots") or []
+    user_name = data.get("user_name", "")
+    video_url = data.get("video_url") or None
+
+    if not shots:
+        return jsonify({"error": "shots가 필요합니다."}), 400
+
+    b64 = compose_from_game(shots[:4], user_name=user_name, video_url=video_url)
+    return jsonify({"life_four_cut": b64})
+
+
+@solo_bp.post("/four-cut")
+def make_four_cut_from_fails():
+    """
+    저장된 실패샷으로 인생네컷을 재생성한다.
+    JSON body: { game_id, user_name? }
+    Returns: { life_four_cut: base64, fail_photo_urls: [...] }
+    """
+    import io
+    import os
+    from PIL import Image
+
+    data = request.get_json(force=True)
+    game_id = data.get("game_id")
+    if not game_id:
+        return jsonify({"error": "game_id가 필요합니다."}), 400
+    user_name = data.get("user_name", "")
+    video_url = data.get("video_url") or None
+
+    fail_photo_urls = get_fail_photo_urls(game_id)
+    if not fail_photo_urls:
+        return jsonify({"error": "저장된 실패 사진이 없습니다."}), 404
+
+    # URL → 파일 경로 → bytes → base64
+    fail_shots_b64 = []
+    for url in fail_photo_urls[:4]:
+        filepath = url.lstrip("/")  # "static/photos/..." 형태
+        if os.path.isfile(filepath):
+            with open(filepath, "rb") as f:
+                fail_shots_b64.append(base64.b64encode(f.read()).decode())
+
+    life_four_cut_b64 = compose_from_game(fail_shots_b64, user_name=user_name, video_url=video_url)
+
+    return jsonify({
+        "life_four_cut": life_four_cut_b64,
+        "fail_photo_urls": fail_photo_urls,
     })
