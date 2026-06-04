@@ -1,6 +1,9 @@
 import eventlet
 eventlet.monkey_patch()
 
+import eventlet.wsgi
+eventlet.wsgi.MAX_REQUEST_LINE = 65536
+
 from app import create_app
 from app.api.multi_socket import socketio
 
