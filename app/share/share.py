@@ -38,8 +38,8 @@ def _decode_b64(b64: str) -> bytes:
 @share_bp.post("/upload")
 def upload():
     """
-    JSON body: { image_base64, user_name? }
-    Returns: { image_id, qr_b64, download_url }
+    JSON body: { image_base64, video_id?, user_name? }
+    Returns: { image_id, qr_b64, share_url }
     """
     data = request.get_json(force=True)
     b64 = data.get("image_base64", "")
@@ -57,11 +57,18 @@ def upload():
     except Exception:
         return jsonify({"error": "이미지 저장에 실패했습니다."}), 500
 
-    server_url   = os.getenv("SERVER_URL", "http://localhost:5001")
-    download_url = f"{server_url}/api/share/download/{image_id}"
+    # video_id 저장 (같은 이름으로 메타 파일)
+    video_id = (data.get("video_id") or "").strip()
+    if video_id:
+        meta_path = os.path.join(PHOTO_DIR, f"{image_id}.meta")
+        with open(meta_path, "w") as f:
+            f.write(video_id)
+
+    server_url = os.getenv("SERVER_URL", "http://localhost:5001")
+    share_url  = f"{server_url}/api/share/page/{image_id}"
 
     qr = qrcode.QRCode(box_size=6, border=2)
-    qr.add_data(download_url)
+    qr.add_data(share_url)
     qr.make(fit=True)
     qr_img = qr.make_image(fill_color="black", back_color="white")
 
@@ -70,10 +77,55 @@ def upload():
     qr_b64 = base64.b64encode(qr_buf.getvalue()).decode()
 
     return jsonify({
-        "image_id":    image_id,
-        "qr_b64":      qr_b64,
-        "download_url": download_url,
+        "image_id":  image_id,
+        "qr_b64":    qr_b64,
+        "share_url": share_url,
     })
+
+
+@share_bp.get("/page/<image_id>")
+def share_page(image_id: str):
+    image_path = os.path.join(PHOTO_DIR, f"{image_id}.png")
+    if not os.path.isfile(image_path):
+        return "<h2>사진을 찾을 수 없습니다.</h2>", 404
+
+    server_url   = os.getenv("SERVER_URL", "http://localhost:5001")
+    photo_url    = f"{server_url}/api/share/download/{image_id}"
+
+    meta_path = os.path.join(PHOTO_DIR, f"{image_id}.meta")
+    video_block = ""
+    if os.path.isfile(meta_path):
+        with open(meta_path) as f:
+            vid = f.read().strip()
+        if vid:
+            video_url      = f"{server_url}/api/share/video/{vid}"
+            video_dl_url   = f"{server_url}/api/share/video/{vid}?download=1"
+            video_block = f"""
+            <video src="{video_url}" controls style="width:100%;max-width:480px;border-radius:12px;margin-top:16px"></video>
+            <a href="{video_dl_url}" download class="btn">🎬 동영상 다운로드</a>"""
+
+    html = f"""<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pwee — 사진 & 영상 공유</title>
+  <style>
+    body {{ font-family: 'Noto Sans KR', sans-serif; background:#fffdf2; display:flex; flex-direction:column; align-items:center; padding:24px; gap:16px; color:#463c3c; }}
+    h1 {{ font-size:24px; margin:0; }}
+    img {{ width:100%; max-width:360px; border-radius:12px; box-shadow:0 4px 16px rgba(0,0,0,.12); }}
+    .btn {{ display:block; width:100%; max-width:360px; padding:14px; background:#463c3c; color:#fffdf2; border-radius:999px; text-align:center; text-decoration:none; font-size:16px; box-sizing:border-box; }}
+  </style>
+</head>
+<body>
+  <h1>Pwee 📸</h1>
+  <img src="{photo_url}" alt="인생네컷">
+  <a href="{photo_url}" download class="btn">🖼 사진 다운로드</a>
+  {video_block}
+</body>
+</html>"""
+    from flask import Response
+    return Response(html, mimetype="text/html")
 
 
 @share_bp.get("/download/<image_id>")
@@ -145,8 +197,8 @@ def stream_video(game_id: str):
 @share_bp.post("/email")
 def send_email():
     """
-    JSON body: { email, image_base64?, image_id? }
-    image_base64 우선, 없으면 image_id로 파일 로드.
+    JSON body: { email, image_id?, image_base64?, video_id? }
+    사진과 동영상(있으면) 모두 첨부.
     """
     from flask_mail import Message
     from app import mail
@@ -175,14 +227,40 @@ def send_email():
     if not img_bytes:
         return jsonify({"error": "전송할 이미지가 없습니다."}), 400
 
+    # 동영상 바이트 획득 (선택)
+    video_bytes = None
+    video_ext   = "webm"
+    video_id = (data.get("video_id") or "").strip()
+    if video_id:
+        for ext in ("webm", "mp4"):
+            vpath = os.path.join(VIDEO_DIR, f"{video_id}.{ext}")
+            if os.path.isfile(vpath):
+                with open(vpath, "rb") as f:
+                    video_bytes = f.read()
+                video_ext = ext
+                break
+
+    server_url = os.getenv("SERVER_URL", "http://localhost:5001")
+    has_video  = video_bytes is not None
+
+    body_text = (
+        "Pwee에서 찍은 사진과 영상을 공유해 드립니다 :)\n\n"
+        f"📥 다운로드 페이지: {server_url}/api/share/page/{data.get('image_id', '')}"
+        if has_video else
+        "Pwee에서 찍은 사진을 공유해 드립니다 :)"
+    )
+
     sender = current_app.config.get("MAIL_DEFAULT_SENDER") or current_app.config.get("MAIL_USERNAME")
-    msg  = Message(
-        subject="Pwee — 촬영 사진",
+    msg = Message(
+        subject="Pwee — 사진" + (" & 영상" if has_video else ""),
         sender=sender,
         recipients=[email],
-        body="Pwee에서 찍은 사진을 공유해 드립니다 :)",
+        body=body_text,
     )
     msg.attach("pwee-photo.png", "image/png", img_bytes)
+    if video_bytes:
+        mimetype = f"video/{video_ext}"
+        msg.attach(f"pwee-video.{video_ext}", mimetype, video_bytes)
 
     try:
         mail.send(msg)
