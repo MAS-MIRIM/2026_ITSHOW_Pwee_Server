@@ -124,6 +124,7 @@ class MultiGameManager:
         room_id: str,
         user_id: int,
         image_bytes: bytes,
+        photo_bytes: bytes | None = None,
     ) -> dict:
         """
         플레이어 프레임을 분석한다.
@@ -152,11 +153,12 @@ class MultiGameManager:
         if 0 < target_score < get("detection", "fail_shot_threshold", 0.30):
             import base64
             from app.ai.photo_storage import save_photo
-            b64 = base64.b64encode(image_bytes).decode()
+            store_bytes = photo_bytes if photo_bytes else image_bytes
+            b64 = base64.b64encode(store_bytes).decode()
             if len(state.fail_shots[user_id]) < 4:
                 round_idx = len(state.fail_shots[user_id])
                 state.fail_shots[user_id].append(b64)
-                save_photo(f"{state.room_id}_{user_id}", round_idx, image_bytes, "fail")
+                save_photo(f"{state.room_id}_{user_id}", round_idx, store_bytes, "fail")
 
         now = time.time()
         expr_cfg = get_expression(target)

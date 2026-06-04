@@ -111,7 +111,13 @@ def on_submit_frame(data):
         b64 = b64.split(",", 1)[1]
     image_bytes = base64.b64decode(b64)
 
-    result = multi_manager.process_frame(room_id, user_id, image_bytes)
+    # 전체 프레임(인생네컷용) — 없으면 채점용 이미지 사용
+    photo_b64 = data.get("photo_base64", "")
+    if "," in photo_b64:
+        photo_b64 = photo_b64.split(",", 1)[1]
+    photo_bytes = base64.b64decode(photo_b64) if photo_b64 else None
+
+    result = multi_manager.process_frame(room_id, user_id, image_bytes, photo_bytes=photo_bytes)
 
     # 패널티 발생 시 닉네임 + 표정 정보 추가
     if result.get("penalty_assigned"):
